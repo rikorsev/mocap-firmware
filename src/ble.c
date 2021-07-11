@@ -117,14 +117,8 @@ static ssize_t read(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                       0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF  
                                     };
     LOG_INF("Read");
-    LOG_INF("Len %d", len);
 
-    len = sizeof(test_data) > offset + len ? len : offset - sizeof(test_data);
-    memcpy(buf, test_data + offset, len);
-
-    //len = accel_read_record((char *)buf, len);
-
-    LOG_INF("Read %d", len);
+    len = accel_read_record((char *)buf, len, offset);
 
     return len;
 }
