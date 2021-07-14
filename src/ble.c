@@ -5,16 +5,26 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 #include <drivers/gpio.h>
+#include <fs/fs.h>
 
 #include <logging/log.h>
 
 #include "accel.h"
+#include "storage.h"
 
 #define CONNECTION_LED_NODE DT_ALIAS(led0)
 #define CONNECTION_LED_PORT DT_GPIO_LABEL(CONNECTION_LED_NODE, gpios)
 #define CONNECTION_LED_PIN DT_GPIO_PIN(CONNECTION_LED_NODE, gpios)
 
 LOG_MODULE_REGISTER(ble);
+
+enum
+{
+    BLE_CONTROL_STOP_CMD,
+    BLE_CONTROL_START_CMD,
+    BLE_CONTROL_OPEN_STORAGE_CMD,
+    BLE_CONTROL_CLOSE_STPRAGE_CMD
+};
 
 static const struct device *connection_led_port = NULL;
 static bool is_connected = false;
@@ -46,7 +56,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-    accel_stop_record();
+    /* Stop record first */
+    int result = accel_record_stop();
+    __ASSERT(result, "Fail to stop recording. Result %d", result);
+    
     LOG_INF("Disconnected");
     is_connected = false;
     gpio_pin_set(connection_led_port, CONNECTION_LED_PIN, true);
@@ -60,21 +73,52 @@ static struct bt_conn_cb conn_callbacks = {
 static ssize_t control(struct bt_conn *conn, const struct bt_gatt_attr *attr, 
                        const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
-    bool is_start = *(bool *)buf;
+    int result = 0;
+    uint8_t cmd = *(uint8_t *)buf;
 
     LOG_INF("Control");
 
-    if(is_start == true)
+    switch(cmd)
     {
-        LOG_INF("Start");
+        case BLE_CONTROL_STOP_CMD:
+            LOG_INF("Stop");
 
-        accel_start_record();
-    }
-    else
-    {
-        LOG_INF("Stop");
+            result = accel_record_stop();
+            __ASSERT(result, "Fail to start recording. Result %d", result);
 
-        accel_stop_record();
+            /* Close storage */
+            result = storage_close();
+            __ASSERT(result, "Fail to close storage. Result %d", result);
+        break;
+
+        case BLE_CONTROL_START_CMD:
+            LOG_INF("Start");
+
+            /* Open storage */
+            result = storage_open();
+            __ASSERT(result, "Fail to open storage. Result %d", result);
+
+            /* and clear previous data */
+            result = storage_clear();
+            __ASSERT(result, "Fail to clear storage. Result %d", result);
+
+            result = accel_record_start();
+            __ASSERT(result, "Fail to stop recording. Result %d", result);
+        break;
+              
+        case BLE_CONTROL_OPEN_STORAGE_CMD:
+            LOG_INF("Open storage");
+
+            result = storage_open();
+             __ASSERT(result, "Fail to open storage. Result %d", result);
+        break;
+
+        case BLE_CONTROL_CLOSE_STPRAGE_CMD:
+            LOG_INF("Close storage");
+
+            result = storage_close();
+            __ASSERT(result, "Fail to close storage. Result %d", result);
+        break;
     }
 
     return 0;
@@ -118,7 +162,12 @@ static ssize_t read(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                     };
     LOG_INF("Read");
 
-    len = accel_read_record((char *)buf, len, offset);
+    ssize_t result = storage_read(buf, len);
+    __ASSERT(result < 0, "Storage read - fail. Result %d", result);
+
+    len = (uint16_t) result;
+
+    LOG_INF("Len %d",  len);
 
     return len;
 }
@@ -167,7 +216,10 @@ void ble_entry(void *p1, void *p2, void *p3)
     result = gpio_pin_configure(connection_led_port, CONNECTION_LED_PIN, GPIO_OUTPUT_ACTIVE);
     assert(result >= 0);
 
-    LOG_INF("BLE inited sucessfully");
+    /* TODO: move to some generic init module ? */
+    storage_init();
+
+    LOG_INF("Inited sucessfully");
 
     while(true)
     {
