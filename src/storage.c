@@ -19,6 +19,8 @@ static struct fs_mount_t mp = {
 static struct fs_file_t storage;
 static struct fs_file_t meta;
 
+static bool is_opened = false;
+
 void storage_init(void)
 {
 	int result = 0;
@@ -30,7 +32,7 @@ void storage_init(void)
 	mp.mnt_point = "/SD:";
 
 	result = fs_mount(&mp);
-	__ASSERT(result, "Sensor sampel fetch - fail. Result %d", result);
+	__ASSERT(result == 0, "storage init - fail. Result %d", result);
 
 	LOG_INF("Init success");
 }
@@ -81,6 +83,8 @@ int storage_open(void)
 		result = storage_open_meta_file();
 		if(result == 0)
 		{
+			is_opened = true;
+
 			LOG_INF("Open success");
 		}
 	}
@@ -114,43 +118,40 @@ int storage_clear(void)
 
 ssize_t storage_write(void *data, size_t size)
 {
-	LOG_INF("Storage write");
-
 	return fs_write(&storage, data, size);
 }
 
 ssize_t storage_read(void *data, size_t size)
 {
-	LOG_INF("Storage read");
-
 	return fs_read(&storage, data, size);
 }
 
 ssize_t storage_meta_write(void *data, size_t size)
 {
-	LOG_INF("Storage meta write");
-
 	return fs_write(&meta, data, size);
 }
 
 ssize_t storage_meta_read(void *data, size_t size)
 {
-	LOG_INF("Storage meta read");
-
 	return fs_read(&meta, data, size);
 }
 
 int storage_close(void)
 {
 	int result = 0;
-	
-	result = fs_close(&storage);
-	if(result == 0)
+
+	if(is_opened == true)
 	{
-		result = fs_close(&meta);
+		result = fs_close(&storage);
 		if(result == 0)
 		{
-			LOG_INF("Close success");
+			result = fs_close(&meta);
+			if(result == 0)
+			{
+				is_opened = false;
+
+				LOG_INF("Close success");
+			}
 		}
 	}
 
