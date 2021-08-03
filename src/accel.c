@@ -21,6 +21,7 @@ LOG_MODULE_REGISTER(accel);
 
 struct accel_entry
 {
+    uint32_t timestamp;
     struct sensor_value accel[3];
     struct sensor_value gyro[3];    
 };
@@ -36,6 +37,10 @@ static void process(const struct device *dev)
 
     int result = 0;
 
+    /* Get timestamp */
+    entry.timestamp = k_uptime_get_32();
+
+    /* Fetch accelerometr data */
     result = sensor_sample_fetch(dev);
     __ASSERT(result == 0, "Sensor sample fetch - fail. Result %d", result);
 
@@ -52,10 +57,10 @@ static void process(const struct device *dev)
     __ASSERT(result >= 0, "Write accel data to storage - fail. Result %d", result);
     
     /* For debug purposes */
-    /* If it is first entry */   
-    if(g_meta.count == 0)
+    /* Print data on each 100 records */
+    if(g_meta.count % 100 == 0)
     {
-        printf("\r\nA: %f %f %f G: %f %f %f\r\n", 
+        printf("\r\n[%08d] A: %f %f %f G: %f %f %f\r\n", entry.timestamp,
                                         sensor_value_to_double(&entry.accel[0]),
                                         sensor_value_to_double(&entry.accel[1]),
                                         sensor_value_to_double(&entry.accel[2]),
@@ -143,6 +148,6 @@ void accel_entry(void *p1, void *p2, void *p3)
     {
         process(mpu6050);
 
-        k_msleep(10);
+        k_msleep(PERIOD);
     }
 }
