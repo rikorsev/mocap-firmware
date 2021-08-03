@@ -77,6 +77,17 @@ int storage_open(void)
 {
 	int result = 0;
 		
+	/* close storage first if it is already opened */
+	if(is_opened == true)
+	{
+		result = storage_close();
+		if(result != 0)
+		{
+			LOG_ERR("Fail to close on open. Result %d", result);
+			return result;
+		}
+	}
+
 	result = storage_open_mocap_file();
 	if(result == 0)
 	{
