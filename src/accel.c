@@ -26,10 +26,11 @@ struct accel_entry
     struct sensor_value gyro[3];    
 };
 
-static k_tid_t g_accel_tid = {0};
+static k_tid_t accel_tid = {0};
 static const struct device *status_led_port = NULL;
 static struct record_meta g_meta = {0};
 static bool is_running = false;
+static uint32_t base_timestamp = 0; // Timestamp whene record was started
 
 static void process(const struct device *dev)
 {
@@ -38,7 +39,7 @@ static void process(const struct device *dev)
     int result = 0;
 
     /* Get timestamp */
-    entry.timestamp = k_uptime_get_32();
+    entry.timestamp = k_uptime_get_32() - base_timestamp;
 
     /* Fetch accelerometr data */
     result = sensor_sample_fetch(dev);
@@ -79,11 +80,12 @@ int accel_record_start(void)
     int result = 0;
 
     is_running = true;
+    base_timestamp = k_uptime_get_32();
 
     /* Clear meta data */
     memset(&g_meta, 0, sizeof(g_meta));
 
-    k_thread_resume(g_accel_tid);
+    k_thread_resume(accel_tid);
 
     return result;
 }
@@ -94,7 +96,7 @@ int accel_record_stop(void)
 
     if(is_running == true)
     {
-        k_thread_suspend(g_accel_tid);
+        k_thread_suspend(accel_tid);
 
         is_running = false;
 
@@ -141,8 +143,8 @@ void accel_entry(void *p1, void *p2, void *p3)
     After initialization suspend the thread and 
     wait till it be resumed by BLE command 
     */
-    g_accel_tid = k_current_get();
-    k_thread_suspend(g_accel_tid);
+    accel_tid = k_current_get();
+    k_thread_suspend(accel_tid);
 
     while(true) 
     {
