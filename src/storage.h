@@ -1,6 +1,8 @@
 #ifndef STORAGE_H
 #define STORAGE_H
 
+#include <sys/types.h>
+
 void storage_init(void);
 int storage_open(void);
 int storage_clear(void);

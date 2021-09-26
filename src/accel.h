@@ -1,9 +1,20 @@
 #ifndef ACCEL_H
 #define ACCEL_H
 
+#include <drivers/sensor.h>
+
+struct accel_entry
+{
+    uint32_t timestamp;
+    struct sensor_value accel[3];
+    struct sensor_value gyro[3];    
+};
+
+void accel_init(void);
 int accel_record_start(void);
 int accel_record_stop(void);
-size_t accel_read_record(char *buf, uint16_t len, uint16_t offset);
-void accel_entry(void *p1, void *p2, void *p3);
+struct k_msgq *accel_queue_get(void);
+uint16_t accel_count_get(void);
+bool accel_is_running(void);
 
 #endif

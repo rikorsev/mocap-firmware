@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <zephyr.h>
 #include <device.h>
 #include <drivers/sensor.h>
@@ -8,148 +7,95 @@
 #include <logging/log.h>
 #include <drivers/gpio.h>
 
-#include "ble.h"
-#include "storage.h"
+#include "accel.h"
 
 LOG_MODULE_REGISTER(accel);
 
-#define STATUS_LED_NODE DT_ALIAS(led1)
-#define STATUS_LED_PORT DT_GPIO_LABEL(STATUS_LED_NODE, gpios)
-#define STATUS_LED_PIN  DT_GPIO_PIN(STATUS_LED_NODE, gpios)
 #define MPU6050         DT_LABEL(DT_INST(0, invensense_mpu6050))
-#define PERIOD          10
+#define PERIOD          K_MSEC(100)
+#define QUEUE_SIZE      10
+#define QUEUE_TIMEOUT   K_MSEC(100)
 
-struct accel_entry
-{
-    uint32_t timestamp;
-    struct sensor_value accel[3];
-    struct sensor_value gyro[3];    
-};
-
-static k_tid_t accel_tid = {0};
-static const struct device *status_led_port = NULL;
-static struct record_meta g_meta = {0};
+static const struct device *accle_device;
 static bool is_running = false;
 static uint32_t base_timestamp = 0; // Timestamp whene record was started
+static uint16_t count = 0;
 
-static void process(const struct device *dev)
+void accel_timer_handler(struct k_timer *timer_id);
+
+K_MSGQ_DEFINE(accel_queue, sizeof(struct accel_entry), QUEUE_SIZE, 4);
+K_TIMER_DEFINE(accel_timer, accel_timer_handler, NULL);
+
+void accel_timer_handler(struct k_timer *timer_id)
 {
     struct accel_entry entry;
 
     int result = 0;
-
+    
     /* Get timestamp */
     entry.timestamp = k_uptime_get_32() - base_timestamp;
 
     /* Fetch accelerometr data */
-    result = sensor_sample_fetch(dev);
+    result = sensor_sample_fetch(accle_device);
     __ASSERT(result == 0, "Sensor sample fetch - fail. Result %d", result);
 
     /* Get acceleromiter data */
-    result = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, entry.accel);
+    result = sensor_channel_get(accle_device, SENSOR_CHAN_ACCEL_XYZ, entry.accel);
     __ASSERT(result == 0, "Sensor accel XYZ channel get - fail. Result %d", result);
     
     /* Get gyroscope data */
-    result = sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, entry.gyro);
+    result = sensor_channel_get(accle_device, SENSOR_CHAN_GYRO_XYZ, entry.gyro);
     __ASSERT(result == 0, "Sensor gyro XYZ channel get - fail. Result %d", result);
-    
-    /* Write to storage */
-    result = storage_write(&entry, sizeof(entry));
-    __ASSERT(result >= 0, "Write accel data to storage - fail. Result %d", result);
-    
-    /* For debug purposes */
-    /* Print data on each 100 records */
-    if(g_meta.count % 100 == 0)
-    {
-        printf("\r\n[%08d] A: %f %f %f G: %f %f %f\r\n", entry.timestamp,
-                                        sensor_value_to_double(&entry.accel[0]),
-                                        sensor_value_to_double(&entry.accel[1]),
-                                        sensor_value_to_double(&entry.accel[2]),
-                                        sensor_value_to_double(&entry.gyro[0]),
-                                        sensor_value_to_double(&entry.gyro[1]),
-                                        sensor_value_to_double(&entry.gyro[2]));
-    }
 
-    g_meta.count++;
+    /* Put data to queue */
+    result = k_msgq_put(&accel_queue, &entry, QUEUE_TIMEOUT);
+    __ASSERT(result == 0, "Add data to queue - fail. Result %d", result);
 
-    gpio_pin_toggle(status_led_port, STATUS_LED_PIN);
+    count++;
 }
 
 int accel_record_start(void)
 {
-    int result = 0;
-
-    is_running = true;
+    is_running     = true;
     base_timestamp = k_uptime_get_32();
+    count          = 0;
 
-    /* Clear meta data */
-    memset(&g_meta, 0, sizeof(g_meta));
-
-    k_thread_resume(accel_tid);
-
-    return result;
+    k_timer_start(&accel_timer, PERIOD, PERIOD);
+    
+    return 0;
 }
 
 int accel_record_stop(void)
 {
-    int result = 0;
-
     if(is_running == true)
     {
-        k_thread_suspend(accel_tid);
+        k_timer_stop(&accel_timer);
 
         is_running = false;
-
-        /* Calculate size */
-        g_meta.size = g_meta.count * sizeof(struct accel_entry);
-
-        /* Write meta data to flash */
-        result = storage_meta_write(&g_meta, sizeof(g_meta));
-        if(result < 0)
-        {
-            LOG_ERR("Fail to write meta data. Result %d", result);
-
-            return result;
-        }
-        else
-        {
-            /* Everything is ok. Return 0 */
-            result = 0;
-        }
-
-        gpio_pin_set(status_led_port, STATUS_LED_PIN, true);
-
-        LOG_INF("Record count %d, Lenght %d", g_meta.count, 
-                                        g_meta.count * sizeof(struct accel_entry));
     }
 
-    return result;
+    return 0;
 }
 
-void accel_entry(void *p1, void *p2, void *p3)
+struct k_msgq *accel_queue_get(void)
 {
-    const struct device *mpu6050 = device_get_binding(MPU6050);
-    __ASSERT(mpu6050 != NULL, "Failed to find sensor %s", MPU6050);
+    return &accel_queue;
+}
 
-    status_led_port = device_get_binding(STATUS_LED_PORT);
-    __ASSERT(status_led_port != NULL, "Failed to find status led");
+uint16_t accel_count_get(void)
+{
+    return count;
+}
 
-    int result = gpio_pin_configure(status_led_port, STATUS_LED_PIN, GPIO_OUTPUT_ACTIVE);
-    __ASSERT(result >= 0, "Failed to config status led");
+bool accel_is_running(void)
+{
+    return is_running;
+}
+
+void accel_init(void)
+{
+    accle_device = device_get_binding(MPU6050);
+    __ASSERT(accle_device != NULL, "Failed to find sensor %s", MPU6050);
 
     LOG_INF("Inited successfully");
-
-    /* 
-    After initialization suspend the thread and 
-    wait till it be resumed by BLE command 
-    */
-    accel_tid = k_current_get();
-    k_thread_suspend(accel_tid);
-
-    while(true) 
-    {
-        process(mpu6050);
-
-        k_msleep(PERIOD);
-    }
 }

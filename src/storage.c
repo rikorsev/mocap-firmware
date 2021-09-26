@@ -4,6 +4,7 @@
 #include <logging/log.h>
 #include <fs/fs.h>
 #include <ff.h>
+#include <sys/types.h>
 
 LOG_MODULE_REGISTER(storage);
 
@@ -68,6 +69,28 @@ static int storage_open_meta_file(void)
 		LOG_ERR("Open %s - fail. Result %d", path, result);
 
 		return result;
+	}
+
+	return result;
+}
+
+int storage_close(void)
+{
+	int result = 0;
+
+	if(is_opened == true)
+	{
+		result = fs_close(&storage);
+		if(result == 0)
+		{
+			result = fs_close(&meta);
+			if(result == 0)
+			{
+				is_opened = false;
+
+				LOG_INF("Close success");
+			}
+		}
 	}
 
 	return result;
@@ -145,26 +168,4 @@ ssize_t storage_meta_write(void *data, size_t size)
 ssize_t storage_meta_read(void *data, size_t size)
 {
 	return fs_read(&meta, data, size);
-}
-
-int storage_close(void)
-{
-	int result = 0;
-
-	if(is_opened == true)
-	{
-		result = fs_close(&storage);
-		if(result == 0)
-		{
-			result = fs_close(&meta);
-			if(result == 0)
-			{
-				is_opened = false;
-
-				LOG_INF("Close success");
-			}
-		}
-	}
-
-	return result;
 }
