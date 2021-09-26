@@ -66,7 +66,7 @@ void manager_record_start(void)
 {
     int result = 0;
 
-    LOG_INF("Start");
+    LOG_INF("Start recording");
 
     /* Open storage */
     result = storage_open();
@@ -85,7 +85,7 @@ void manager_record_stop(void)
     int result = 0;
     struct record_meta meta = {0};
 
-    LOG_INF("Stop");
+    LOG_INF("Stop recording");
 
     if(accel_is_running() == true)
     {
@@ -98,7 +98,7 @@ void manager_record_stop(void)
 
         /* Write meta data to flash */
         result = storage_meta_write(&meta, sizeof(meta));
-        __ASSERT(result == 0, "Failed to store meta data. Result %d", result);
+        __ASSERT(result >= 0, "Failed to store meta data. Result %d", result);
 
         gpio_pin_set(status_led_port, STATUS_LED_PIN, true);
 

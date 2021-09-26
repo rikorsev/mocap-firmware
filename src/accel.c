@@ -11,7 +11,7 @@
 
 LOG_MODULE_REGISTER(accel);
 
-#define MPU6050         DT_LABEL(DT_INST(0, invensense_mpu6050))
+#define ACCEL           DT_LABEL(DT_INST(0, invensense_mpu6050))
 #define PERIOD          K_MSEC(100)
 #define QUEUE_SIZE      10
 #define QUEUE_TIMEOUT   K_MSEC(100)
@@ -26,12 +26,13 @@ void accel_timer_handler(struct k_timer *timer_id);
 K_MSGQ_DEFINE(accel_queue, sizeof(struct accel_entry), QUEUE_SIZE, 4);
 K_TIMER_DEFINE(accel_timer, accel_timer_handler, NULL);
 
-void accel_timer_handler(struct k_timer *timer_id)
+static void accel_trigger_handler(const struct device *dev,
+                struct sensor_trigger *trig)
 {
     struct accel_entry entry;
 
     int result = 0;
-    
+
     /* Get timestamp */
     entry.timestamp = k_uptime_get_32() - base_timestamp;
 
@@ -52,27 +53,42 @@ void accel_timer_handler(struct k_timer *timer_id)
     __ASSERT(result == 0, "Add data to queue - fail. Result %d", result);
 
     count++;
+
+    if (is_running != true) 
+    {
+        LOG_INF("Stop");
+
+        result = sensor_trigger_set(dev, trig, NULL);
+        __ASSERT(result == 0, "Accel stop - fail. Result %d", result);
+    }
 }
 
 int accel_record_start(void)
 {
+    int result     = 0;
     is_running     = true;
     base_timestamp = k_uptime_get_32();
     count          = 0;
 
-    k_timer_start(&accel_timer, PERIOD, PERIOD);
+    static const struct sensor_trigger trigger = {
+        .type = SENSOR_TRIG_DATA_READY,
+        .chan = SENSOR_CHAN_ALL,
+    };
+
+    result = sensor_trigger_set(accle_device, (struct sensor_trigger *) &trigger, accel_trigger_handler);
+    if(result != 0)
+    {
+        LOG_ERR("Sensor trigger set - fail. Result %d", result);
+
+        return result;
+    }
     
-    return 0;
+    return result;
 }
 
 int accel_record_stop(void)
 {
-    if(is_running == true)
-    {
-        k_timer_stop(&accel_timer);
-
-        is_running = false;
-    }
+    is_running = false;
 
     return 0;
 }
@@ -94,8 +110,8 @@ bool accel_is_running(void)
 
 void accel_init(void)
 {
-    accle_device = device_get_binding(MPU6050);
-    __ASSERT(accle_device != NULL, "Failed to find sensor %s", MPU6050);
+    accle_device = device_get_binding(ACCEL);
+    __ASSERT(accle_device != NULL, "Failed to find sensor %s", ACCEL);
 
     LOG_INF("Inited successfully");
 }
