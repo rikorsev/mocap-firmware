@@ -100,14 +100,16 @@ void manager_record_stop(void)
         result = storage_meta_write(&meta, sizeof(meta));
         __ASSERT(result >= 0, "Failed to store meta data. Result %d", result);
 
-        gpio_pin_set(status_led_port, STATUS_LED_PIN, true);
-
         LOG_INF("Record count %d, Lenght %d", meta.count, 
                                         meta.count * sizeof(struct accel_entry));
 
         /* Close storage */
         result = storage_close();
-        __ASSERT(result == 0, "Fail to close storage. Result %d", result); 
+        __ASSERT(result == 0, "Fail to close storage. Result %d", result);
+
+        /* Set status led to down */
+        result = gpio_pin_set(status_led_port, STATUS_LED_PIN, true);
+        __ASSERT(result == 0, "Failed to set status led. Result %d", result);
     }
 }
 
@@ -137,8 +139,8 @@ void manager_record_meta_get(struct record_meta *meta)
 
     LOG_INF("Get meta");
 
-    result = storage_meta_read(&meta, sizeof(meta));
-    __ASSERT(result == 0, "Fail to read meta. Result %d", result);
+    result = storage_meta_read(meta, sizeof(struct record_meta));
+    __ASSERT(result >= 0, "Fail to read meta. Result %d", result);
 
     LOG_INF("Meta size: %d, count %d", meta->size, meta->count);
 }

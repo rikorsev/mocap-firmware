@@ -16,7 +16,7 @@ LOG_MODULE_REGISTER(accel);
 #define PERIOD               K_MSEC(100)
 #define QUEUE_SIZE           10
 #define QUEUE_TIMEOUT        K_MSEC(100)
-#define SAMPLE_RATE_DEVIDER  99
+#define SAMPLE_RATE_DEVIDER  9
 #define SAMPLE_RATE_REG_ADDR 0x19
 #define I2C_ACCEL_ADDRESS    0x68
 #define DLPF_VALUE           6

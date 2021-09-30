@@ -7,8 +7,9 @@
 struct record_meta
 {
     size_t size;
-    uint16_t count;
+    uint32_t count;
 };
+
 
 void manager_record_start(void);
 void manager_record_stop(void);
